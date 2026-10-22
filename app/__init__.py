@@ -71,8 +71,11 @@ def create_app():
     @app.context_processor
     def inject_globals():
         from app.models import CompanySettings
+        from flask_login import current_user
+        from app.sample_data import installed_bundle
         settings = CompanySettings.query.first()
-        return {"company_settings": settings}
+        sample = installed_bundle() if current_user.is_authenticated and not current_user.is_staff_only() else None
+        return {"company_settings": settings, "dummy_bundle": sample}
 
     # Idempotently bring the schema up to date (new tables / columns) so deploys
     # don't need a manual migration step. Safe to run on every start.

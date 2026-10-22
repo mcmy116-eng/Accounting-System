@@ -15,4 +15,4 @@ RUN mkdir -p instance uploads
 
 EXPOSE 5050
 
-CMD ["sh", "-c", "gunicorn -w 2 -b 0.0.0.0:${PORT:-5050} --timeout 120 run:app"]
+CMD ["sh", "-c", "python load_dummy_data.py && exec gunicorn -w 2 -b 0.0.0.0:${PORT:-5050} --timeout 120 run:app"]

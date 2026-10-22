@@ -7,6 +7,23 @@ from app.models import CompanySettings, Currency, TaxRate, CostCenter, Budget, A
 bp = Blueprint("settings", __name__, url_prefix="/settings")
 
 
+@bp.route('/dummy-data')
+@login_required
+def dummy_data():
+    import json
+    from app.controls import lock_books
+    from app.models import SampleDataBundle, Invoice, Bill
+    from app.sample_data import BUNDLE_KEY, current_snapshot
+    lock_books()
+    bundle = db.session.get(SampleDataBundle, BUNDLE_KEY)
+    manifest = json.loads(bundle.manifest_json) if bundle else {}
+    installed = bundle and bundle.status == 'installed'
+    return render_template('settings/dummy_data.html', bundle=bundle, manifest=manifest,
+        actual=current_snapshot() if installed else {},
+        invoices=Invoice.query.filter(Invoice.id.in_(manifest.get('invoice_ids', []))).all(),
+        bills=Bill.query.filter(Bill.id.in_(manifest.get('bill_ids', []))).all())
+
+
 @bp.route("/", methods=["GET", "POST"])
 @login_required
 def index():

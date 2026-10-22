@@ -59,6 +59,10 @@ def annual_package(start, end):
             docs=Document.query.filter_by(**{kind+'_id':obj.id}).all()
             if not docs:missing.append({'type':kind,'id':obj.id,'number':obj.number,'status':'NO_ATTACHMENT'})
     manifest={'format':'accounting-year-pack-v1','start':str(start),'end':str(end),'generated_at':datetime.now(timezone.utc).isoformat(),'status':'PARTIAL' if missing else 'COMPLETE_IN_SCOPE','journal_count':len(entries),'documents':index,'missing':missing,'notes':['No tax return or tax adjustment conclusion is implied.','Supporting workpapers, receipts and accountant adjustments must be reviewed.','Invoice PDFs are generated now, not historical immutable renderings.']}
+    from app.sample_data import installed_bundle, NOTICE
+    if installed_bundle():
+        manifest['notes'].insert(0, NOTICE)
+        files['DUMMY-TESTING-NOTICE.txt'] = NOTICE.encode('utf-8')
     manifest['files']={name:{'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data)} for name,data in files.items()}
     files['manifest.json']=json.dumps(manifest,ensure_ascii=False,indent=2).encode()
     links=''.join('<li><a href="'+html.escape(name)+'">'+html.escape(name)+'</a></li>' for name in files)

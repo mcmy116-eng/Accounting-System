@@ -70,6 +70,9 @@ def _base_meta(*extra):
     name = s.company_name if s else "Company"
     ccy = s.base_currency if s else ""
     lines = [name, f"Currency: {ccy}"]
+    from app.sample_data import installed_bundle, NOTICE
+    if installed_bundle():
+        lines.append(NOTICE)
     lines.extend(extra)
     return lines, ccy
 

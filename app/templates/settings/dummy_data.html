@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block page_title %}Dummy/testing 數 · 示例交易{% endblock %}
+{% block content %}
+{% if not bundle or bundle.status != 'installed' %}
+<div class="card"><p>示例資料尚未載入。</p><p>{{ manifest.get('reason', 'Waiting for the authorised service startup import.') }}</p></div>
+{% else %}
+<div class="card">
+  <h2>從一筆帳查到原單</h2>
+  <p>這組全部是 Dummy/testing 數。沒有真實付款、收款或對外寄送。示例日期為 2026 年 10 月，幣別 {{ manifest.currency }}。</p>
+  <p><a class="btn" href="{{ url_for('books.index',q='Dummy/testing') }}">查看 13 筆初始 Journal</a>
+     <a class="btn" href="{{ url_for('bank.detail',bank_id=manifest.bank_id) }}">測試銀行及 7 行結單</a></p>
+  <p>點 Journal → Original transaction／Evidence and payment trail，可查看原單、PDF 及相關付款。所有 PDF 均標明 Dummy/testing。</p>
+</div>
+<div class="card"><h2>Invoice：未收、分收及草稿</h2>
+  <table><tr><th>單號</th><th>Status</th><th>金額</th><th>已收</th><th>未收</th></tr>
+  {% for i in invoices %}<tr><td><a href="{{ url_for('invoices.detail',invoice_id=i.id) }}">{{ i.number }}</a></td><td>{{ i.status }}</td><td>{{ i.total_cents|money }}</td><td>{{ i.amount_paid_cents|money }}</td><td>{{ i.balance_due_cents()|money }}</td></tr>{% endfor %}</table>
+  <p>DUMMY-INV-001：10,000 分收 3,000，未收 7,000。DUMMY-INV-002：2,000 分兩次各收 1,000，已付清。500 的 draft 未入總帳。</p>
+</div>
+<div class="card"><h2>Bill：費用及存貨</h2>
+  <table><tr><th>單號</th><th>Status</th><th>金額</th><th>已付</th><th>未付</th></tr>
+  {% for b in bills %}<tr><td><a href="{{ url_for('bills.detail',bill_id=b.id) }}">{{ b.number }}</a></td><td>{{ b.status }}</td><td>{{ b.total_cents|money }}</td><td>{{ b.amount_paid_cents|money }}</td><td>{{ b.balance_due_cents()|money }}</td></tr>{% endfor %}</table>
+  <p>軟件費 1,200 已付清；辦公室用品 3,000 已付 1,000；存貨採購 4,000 未付。另附底稿記錄成本 1,000，存貨餘額 3,000；這是手動示例，沒有自動 SKU 成本計算。</p>
+</div>
+<div class="card"><h2>2026 年 10 月報表核對（{{ manifest.currency }}）</h2>
+  <p>左欄是初始載入時的預期數字；右欄讀取目前帳簿。之後新增／修改交易，數字可能不同。</p>
+  <table><tr><th>項目</th><th>初始預期</th><th>目前帳簿</th></tr>
+  {% for name,value in manifest.expected_cents.items() %}<tr><td>{{ name }}</td><td>{{ value|money }}</td><td>{{ actual[name]|money }}</td></tr>{% endfor %}</table>
+  <p><a href="{{ url_for('reports.pnl',start=manifest.start,end=manifest.end) }}">Profit &amp; Loss</a> ·
+     <a href="{{ url_for('reports.balance_sheet',as_of=manifest.end) }}">Balance Sheet</a> ·
+     <a href="{{ url_for('reports.trial_balance',as_of=manifest.end) }}">Trial Balance</a></p>
+  <p>歷史截止日 2026-10-08：<a href="{{ url_for('reports.ar_aging',as_of='2026-10-08') }}">AR 應為 12,000</a>；
+     <a href="{{ url_for('reports.ap_aging',as_of='2026-10-08') }}">AP 應為 8,200</a>。後來的收付款不應改寫這個歷史餘額。</p>
+</div>
+{% if current_user.can_edit() %}<form method="post" action="{{ url_for('books.export_package') }}" class="card">
+  {% include '_form_tokens.html' %}<input type="hidden" name="start" value="{{ manifest.start }}"><input type="hidden" name="end" value="{{ manifest.end }}">
+  <h2>下載示例原件及報表</h2><p>ZIP 包括示例 PDF、銀行 CSV、報表及索引。請存放於 Finance folder；所有內容屬 Dummy/testing 數。</p>
+  <button class="btn">Download indexed ZIP</button>
+</form>{% endif %}
+<p>這組資料只載入一次；重新啟動不會重複入帳。開始正式記帳前，請先安排保留測試證據及清理測試資料，避免混入正式帳簿。</p>
+{% endif %}
+{% endblock %}
