@@ -5,7 +5,7 @@
   <div class="card">
     <h2 style="text-align:center;font-size:18px;">{{ company_settings.company_name if company_settings else "Accounting" }}</h2>
     <p class="muted" style="text-align:center;margin-top:-6px;">Sign in to continue</p>
-    <form method="post">
+    <form method="post">{% include '_form_tokens.html' %}
       <div class="field">
         <label>Email</label>
         <input type="email" name="email" required autofocus>

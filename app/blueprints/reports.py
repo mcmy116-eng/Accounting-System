@@ -32,7 +32,7 @@ def export(report_slug, fmt):
     elif kind == "period":
         start, end = _period_bounds()
         rep = builder(start, end)
-    elif kind == "as_of":
+    elif kind in ("as_of", "as_of_opt"):
         as_of = request.args.get("as_of")
         rep = builder(date.fromisoformat(as_of) if as_of else date.today())
     else:  # as_of_opt — report defaults to today
@@ -49,6 +49,8 @@ def _period_bounds():
     end = request.args.get("end")
     start = date.fromisoformat(start) if start else today.replace(day=1)
     end = date.fromisoformat(end) if end else today
+    if start > end:
+        abort(400, 'Start date must not follow end date.')
     return start, end
 
 
@@ -70,8 +72,8 @@ def pnl():
     start, end = _period_bounds()
     cost_center_id = request.args.get("cost_center_id", type=int)
 
-    revenue_accounts = Account.query.filter_by(type=AccountType.REVENUE.value, active=True).order_by(Account.code).all()
-    expense_accounts = Account.query.filter_by(type=AccountType.EXPENSE.value, active=True).order_by(Account.code).all()
+    revenue_accounts = Account.query.filter_by(type=AccountType.REVENUE.value).order_by(Account.code).all()
+    expense_accounts = Account.query.filter_by(type=AccountType.EXPENSE.value).order_by(Account.code).all()
     cogs = [a for a in expense_accounts if a.subtype == "cogs"]
     opex = [a for a in expense_accounts if a.subtype != "cogs"]
 
@@ -107,8 +109,8 @@ def pnl():
 def pnl_by_segment():
     start, end = _period_bounds()
     cost_centers = CostCenter.query.filter_by(active=True).all()
-    revenue_accounts = Account.query.filter_by(type=AccountType.REVENUE.value, active=True).all()
-    expense_accounts = Account.query.filter_by(type=AccountType.EXPENSE.value, active=True).all()
+    revenue_accounts = Account.query.filter_by(type=AccountType.REVENUE.value).all()
+    expense_accounts = Account.query.filter_by(type=AccountType.EXPENSE.value).all()
 
     segments = []
     for cc in cost_centers:
@@ -129,9 +131,9 @@ def balance_sheet():
     as_of = request.args.get("as_of")
     as_of = date.fromisoformat(as_of) if as_of else date.today()
 
-    assets = Account.query.filter_by(type=AccountType.ASSET.value, active=True).order_by(Account.code).all()
-    liabilities = Account.query.filter_by(type=AccountType.LIABILITY.value, active=True).order_by(Account.code).all()
-    equity = Account.query.filter_by(type=AccountType.EQUITY.value, active=True).order_by(Account.code).all()
+    assets = Account.query.filter_by(type=AccountType.ASSET.value).order_by(Account.code).all()
+    liabilities = Account.query.filter_by(type=AccountType.LIABILITY.value).order_by(Account.code).all()
+    equity = Account.query.filter_by(type=AccountType.EQUITY.value).order_by(Account.code).all()
     revenue_accounts = Account.query.filter_by(type=AccountType.REVENUE.value).all()
     expense_accounts = Account.query.filter_by(type=AccountType.EXPENSE.value).all()
 
@@ -166,13 +168,13 @@ def cash_flow():
     net_income = sum(_account_period_movement(a, start, end) for a in revenue_accounts) - \
         sum(_account_period_movement(a, start, end) for a in expense_accounts)
 
-    all_assets = Account.query.filter_by(type=AccountType.ASSET.value, active=True).all()
+    all_assets = Account.query.filter_by(type=AccountType.ASSET.value).all()
     working_capital_assets = [a for a in all_assets if not a.is_bank and a.code not in ("1400", "1450")]
     fixed_assets = [a for a in all_assets if a.code in ("1400", "1450")]
-    liabilities = Account.query.filter_by(type=AccountType.LIABILITY.value, active=True).all()
+    liabilities = Account.query.filter_by(type=AccountType.LIABILITY.value).all()
     op_liabilities = [a for a in liabilities if a.code != "2600"]
     financing_liabilities = [a for a in liabilities if a.code == "2600"]
-    equity_accounts = Account.query.filter_by(type=AccountType.EQUITY.value, active=True).all()
+    equity_accounts = Account.query.filter_by(type=AccountType.EQUITY.value).all()
 
     wc_change = sum(_account_period_movement(a, start, end) for a in working_capital_assets)
     liab_change = sum(_account_period_movement(a, start, end) for a in op_liabilities)
@@ -209,7 +211,7 @@ def _aging_buckets(items, as_of):
     buckets = {"current": 0, "1-30": 0, "31-60": 0, "61-90": 0, "90+": 0}
     detail = []
     for item, due_date, balance in items:
-        if balance <= 0:
+        if balance == 0:
             continue
         days = (as_of - due_date).days
         if days <= 0:
@@ -230,10 +232,9 @@ def _aging_buckets(items, as_of):
 @bp.route("/ar-aging")
 @login_required
 def ar_aging():
-    as_of = date.today()
-    invoices = Invoice.query.filter(Invoice.status.in_(
-        [InvoiceStatus.SENT.value, InvoiceStatus.PARTIAL.value, InvoiceStatus.OVERDUE.value])).all()
-    items = [(i, i.due_date, i.balance_due_cents()) for i in invoices]
+    as_of = date.fromisoformat(request.args['as_of']) if request.args.get('as_of') else date.today()
+    from app.aging import aging_items
+    items = aging_items('invoice', as_of)
     buckets, detail = _aging_buckets(items, as_of)
     return render_template("reports/ar_aging.html", as_of=as_of, buckets=buckets, detail=detail, kind="invoice")
 
@@ -241,10 +242,9 @@ def ar_aging():
 @bp.route("/ap-aging")
 @login_required
 def ap_aging():
-    as_of = date.today()
-    bills = Bill.query.filter(Bill.status.in_(
-        [BillStatus.APPROVED.value, BillStatus.PARTIAL.value])).all()
-    items = [(b, b.due_date, b.balance_due_cents()) for b in bills]
+    as_of = date.fromisoformat(request.args['as_of']) if request.args.get('as_of') else date.today()
+    from app.aging import aging_items
+    items = aging_items('bill', as_of)
     buckets, detail = _aging_buckets(items, as_of)
     return render_template("reports/ar_aging.html", as_of=as_of, buckets=buckets, detail=detail, kind="bill")
 

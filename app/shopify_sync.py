@@ -21,12 +21,14 @@ Network access is isolated behind ``transport`` so the posting logic can be
 unit-tested with canned Shopify responses and no live call.
 """
 import json
+import hashlib
+import re
 import urllib.error
 import urllib.request
 from datetime import date, datetime
 
 from app.extensions import db
-from app.models import Account, CostCenter, JournalEntry, SalesIntegration, SyncedOrder, cents, now
+from app.models import Account, CostCenter, JournalEntry, SalesIntegration, SyncedOrder, IntegrationReview, cents, now
 from app.ledger import create_journal_entry, LedgerError
 
 
@@ -61,6 +63,10 @@ _SHOP_QUERY = "{ shop { name currencyCode } }"
 
 def _endpoint(shop_domain, api_version):
     domain = (shop_domain or "").strip().replace("https://", "").replace("http://", "").rstrip("/")
+    if not re.fullmatch(r'[a-z0-9][a-z0-9-]*\.myshopify\.com', domain, re.I):
+        raise ShopifyError('Use the canonical store-name.myshopify.com host; custom hosts are not accepted for Admin API credentials.')
+    if not re.fullmatch(r'\d{4}-(01|04|07|10)', api_version or ''):
+        raise ShopifyError('Invalid Shopify API version.')
     return f"https://{domain}/admin/api/{api_version}/graphql.json"
 
 
@@ -115,7 +121,7 @@ def _parse_date(node):
 def fetch_orders(integration, start, end, transport=_default_transport, max_pages=100):
     """Fetch normalized orders in [start, end] (store-currency cents)."""
     url = _endpoint(integration.shop_domain, integration.api_version)
-    q = f"created_at:>={start.isoformat()} created_at:<={end.isoformat()}T23:59:59Z"
+    q = f"updated_at:>={start.isoformat()} updated_at:<={end.isoformat()}T23:59:59Z"
     orders, cursor, pages = [], None, 0
     while pages < max_pages:
         data = transport(url, integration.access_token, _ORDERS_QUERY, {"cursor": cursor, "q": q})
@@ -145,6 +151,8 @@ def fetch_orders(integration, start, end, transport=_default_transport, max_page
             pages += 1
         else:
             break
+    if pages >= max_pages:
+        raise ShopifyError('Pagination limit reached. Narrow the date range; no incomplete import was posted.')
     return orders
 
 
@@ -157,7 +165,16 @@ def _acct(code):
 
 def _post_order(integration, order, created_by_id=None):
     """Book one normalized order as a balanced journal entry. Amounts -> base currency."""
-    rate = integration.fx_rate or 1.0
+    rate = integration.fx_rate
+    import math
+    if rate is None or not math.isfinite(rate) or rate <= 0 or not 0 <= (integration.fee_percent or 0) < 100:
+        raise ShopifyError('A positive verified FX rate and fee percentage below 100 are required.')
+    if order['currency'] != integration.store_currency:
+        raise ShopifyError('Order currency differs from the configured store currency.')
+    if order.get('financial_status') not in ('PAID', 'PARTIALLY_REFUNDED'):
+        raise ShopifyError('Unpaid, voided or fully refunded orders need review before posting.')
+    if order.get('financial_status') == 'PARTIALLY_REFUNDED':
+        raise ShopifyError('Previously refunded order requires original sale and refund evidence; the net total is not a new sale.')
 
     def base(c):
         return int(round(c * rate))
@@ -208,25 +225,37 @@ def _post_order(integration, order, created_by_id=None):
 def sync(integration, start, end, created_by_id=None, transport=_default_transport):
     """Fetch orders in the range and post the ones not already booked.
 
-    Returns a summary dict. Commits once at the end so a failure part-way leaves
-    the DB untouched.
+    Fetches the complete range before posting. Each failed order rolls back its
+    own savepoint; valid orders and review records commit together at the end.
+    The summary explicitly reports rejected orders for follow-up.
     """
     orders = fetch_orders(integration, start, end, transport=transport)
     result = {"fetched": len(orders), "posted": 0, "skipped": 0, "errors": []}
     for order in orders:
+        snapshot = json.dumps(order, sort_keys=True, default=str)
         exists = SyncedOrder.query.filter_by(
             integration_id=integration.id, external_id=order["external_id"]).first()
         if exists:
-            result["skipped"] += 1
+            if exists.source_snapshot == snapshot:
+                result["skipped"] += 1
+                continue
+            digest = hashlib.sha256(snapshot.encode()).hexdigest()
+            if not IntegrationReview.query.filter_by(integration_id=integration.id, external_id=order['external_id'], payload_hash=digest).first():
+                db.session.add(IntegrationReview(integration_id=integration.id,external_id=order['external_id'],payload_hash=digest,
+                                                detail=json.dumps({'original_posting':exists.journal_entry_id,'original_snapshot':exists.source_snapshot,'updated_order':order},default=str)))
+            result['errors'].append(f"{order['name']}: changed or legacy order requires review; no refund or amended sale was silently skipped.")
             continue
         try:
-            entry, total = _post_order(integration, order, created_by_id)
-            db.session.flush()
-            db.session.add(SyncedOrder(
-                integration_id=integration.id, external_id=order["external_id"],
-                order_number=order["name"], order_date=order["date"],
-                currency=order["currency"], gross_cents=total, journal_entry_id=entry.id,
-            ))
+            with db.session.begin_nested():
+                entry, total = _post_order(integration, order, created_by_id)
+                db.session.flush()
+                db.session.add(SyncedOrder(
+                    integration_id=integration.id, external_id=order["external_id"],
+                    order_number=order["name"], order_date=order["date"],
+                    currency=order["currency"], gross_cents=total, journal_entry_id=entry.id,
+                    source_snapshot=snapshot,
+                ))
+                db.session.flush()
             result["posted"] += 1
         except (LedgerError, ShopifyError) as e:
             result["errors"].append(f"{order.get('name', '?')}: {e}")

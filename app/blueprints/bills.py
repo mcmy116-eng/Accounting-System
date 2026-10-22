@@ -1,3 +1,7 @@
+import hashlib
+from pathlib import Path
+from werkzeug.utils import secure_filename
+from flask import abort
 import os
 import uuid
 import json
@@ -74,7 +78,7 @@ def upload():
         db.session.flush()
 
         doc = Document(
-            filename=file.filename, filepath=filepath, mimetype=MIME_MAP.get(ext, ""),
+            filename=secure_filename(file.filename)[:255] or "receipt", filepath=filepath, sha256=hashlib.sha256(Path(filepath).read_bytes()).hexdigest(), mimetype=MIME_MAP.get(ext, ""),
             uploaded_by_id=current_user.id, extraction_status=DocStatus.PENDING.value,
             bill_id=bill.id,
         )
@@ -171,6 +175,8 @@ def review(bill_id):
         if not current_user.can_edit():
             flash("You don't have permission to do that.", "error")
             return redirect(url_for("bills.review", bill_id=bill.id))
+        from app.validation import validate_lines, line_amount
+        validate_lines(request.form)
 
         vendor_name_new = request.form.get("new_vendor_name", "").strip()
         contact_id = request.form.get("contact_id")
@@ -207,9 +213,11 @@ def review(bill_id):
             if not account_ids[i]:
                 missing_account = True
                 continue
-            qty = float(quantities[i] or 1)
             unit_price_cents = cents(prices[i] or 0)
-            amount = round(qty * unit_price_cents)
+            account = db.session.get(Account, int(account_ids[i]))
+            if not account or not account.active or account.type not in ('asset','expense') or account.is_bank or account.code in ('1000','1030','1100','1500'):
+                raise LedgerError('Bill lines require an active expense, inventory, prepaid or fixed-asset account.')
+            qty, amount = line_amount(quantities[i], unit_price_cents)
             tax_rate_id = int(tax_ids[i]) if tax_ids[i] else None
             tax_rate = TaxRate.query.get(tax_rate_id) if tax_rate_id else None
             tax_amount = round(amount * (tax_rate.rate / 100)) if tax_rate else 0
@@ -228,6 +236,15 @@ def review(bill_id):
 
         action = request.form.get("action", "save")
         if action == "approve":
+            from sqlalchemy import func
+            others = Bill.query.filter(Bill.id != bill.id, Bill.contact_id == bill.contact_id,
+                                       Bill.status.in_(['approved', 'partial', 'paid']))
+            if bill.vendor_ref.strip():
+                duplicate = others.filter(func.lower(func.trim(Bill.vendor_ref)) == bill.vendor_ref.strip().lower()).first()
+            else:
+                duplicate = others.filter(Bill.bill_date == bill.bill_date, Bill.total_cents == bill.total_cents).first()
+            if duplicate:
+                abort(409, f'Possible duplicate of {duplicate.number}. Check the original; use a distinct vendor reference for a separate genuine bill.')
             if missing_account:
                 flash("Every line needs a GL account before you can approve & post.", "error")
                 db.session.commit()
@@ -247,7 +264,7 @@ def review(bill_id):
         return redirect(url_for("bills.review", bill_id=bill.id))
 
     vendors = Contact.query.filter(Contact.active == True, Contact.type.in_(["vendor", "both"])).order_by(Contact.name).all()  # noqa: E712
-    expense_accounts = Account.query.filter(Account.type == "expense", Account.active == True).order_by(Account.code).all()  # noqa: E712
+    expense_accounts = Account.query.filter(Account.type.in_(["expense", "asset"]), Account.active.is_(True), Account.is_bank.is_(False), Account.code.notin_(["1000","1030","1100","1500"])).order_by(Account.code).all()  # noqa: E712
     tax_rates = TaxRate.query.filter_by(active=True).all()
     cost_centers = CostCenter.query.filter_by(active=True).all()
     document = Document.query.filter_by(bill_id=bill.id).order_by(Document.id.desc()).first()
@@ -258,6 +275,8 @@ def review(bill_id):
 
 
 def _post_bill(bill: Bill):
+    from app.controls import require_base_currency
+    require_base_currency(bill.currency_code)
     ap_account = get_system_account("2000")
     tax_receivable = get_system_account("1500")
 
@@ -308,13 +327,15 @@ def void(bill_id):
         flash("You don't have permission to do that.", "error")
         return redirect(url_for("bills.detail", bill_id=bill_id))
     bill = Bill.query.get_or_404(bill_id)
+    if bill.status == BillStatus.VOID.value:
+        return redirect(url_for("bills.detail", bill_id=bill.id))
     if bill.amount_paid_cents:
         flash("Cannot void a bill that has payments applied.", "error")
         return redirect(url_for("bills.detail", bill_id=bill_id))
     if bill.journal_entry_id:
         from app.models import JournalEntry
         entry = JournalEntry.query.get(bill.journal_entry_id)
-        void_journal_entry(entry, created_by_id=current_user.id)
+        void_journal_entry(entry, created_by_id=current_user.id, reason=request.form.get("reason", "Bill void"))
     bill.status = BillStatus.VOID.value
     db.session.commit()
     flash(f"Bill {bill.number} voided.", "success")
@@ -325,9 +346,5 @@ def void(bill_id):
 @login_required
 def document_file(doc_id):
     doc = Document.query.get_or_404(doc_id)
-    with open(doc.filepath, "rb") as f:
-        data = f.read()
-    resp = make_response(data)
-    resp.headers["Content-Type"] = doc.mimetype or "application/octet-stream"
-    resp.headers["Content-Disposition"] = f"inline; filename={doc.filename}"
-    return resp
+    from app.controls import document_response
+    return document_response(doc)

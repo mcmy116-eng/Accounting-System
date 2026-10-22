@@ -5,7 +5,7 @@
 <div class="card" style="max-width:520px;">
   <p class="muted">Upload a PDF or photo of a vendor bill, receipt, or invoice. AI will read the vendor, date,
     amounts, and line items automatically — you'll review and confirm everything before it posts to the ledger.</p>
-  <form method="post" enctype="multipart/form-data">
+  <form method="post" enctype="multipart/form-data">{% include '_form_tokens.html' %}
     <div class="field">
       <label>File (PDF, PNG, JPG, WEBP)</label>
       <input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif" required>

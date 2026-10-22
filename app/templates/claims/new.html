@@ -4,7 +4,7 @@
 {% block content %}
 <div class="card" style="max-width:560px;">
   <p class="muted">Start a claim, then add receipts (we'll read them for you) or type expense lines in manually.</p>
-  <form method="post">
+  <form method="post">{% include '_form_tokens.html' %}
     <div class="field">
       <label>Title</label>
       <input type="text" name="title" placeholder="e.g. Client dinner &amp; taxi, July" required>

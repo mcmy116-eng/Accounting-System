@@ -3,7 +3,7 @@
 {% block page_title %}Add bank account{% endblock %}
 {% block content %}
 <div class="card" style="max-width:480px;">
-  <form method="post">
+  <form method="post"><label>Opening date <input type="date" name="opening_date"></label>{% include '_form_tokens.html' %}
     <div class="field"><label>Name</label><input name="name" required placeholder="e.g. HSBC Business Current Account"></div>
     <div class="field"><label>Account number (optional, last 4 digits recommended)</label><input name="account_number"></div>
     <div class="field"><label>Currency</label><input name="currency_code" value="HKD" maxlength="3"></div>

@@ -1,4 +1,5 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, session
+from urllib.parse import urlsplit
 from flask_login import login_user, logout_user, login_required, current_user
 
 from app.extensions import db
@@ -17,19 +18,23 @@ def login():
         password = request.form.get("password", "")
         user = User.query.filter_by(email=email).first()
         if user and user.active and user.check_password(password):
+            session.clear()
             login_user(user)
             audit.record("login", "auth", user.id, f"{user.name} logged in")
             db.session.commit()
             next_url = request.args.get("next")
+            if next_url and (urlsplit(next_url).netloc or urlsplit(next_url).scheme or not next_url.startswith('/') or next_url.startswith('//') or '\\' in next_url):
+                next_url = None
             return redirect(next_url or url_for("dashboard.index"))
         flash("Invalid email or password.", "error")
     return render_template("auth/login.html")
 
 
-@bp.route("/logout")
+@bp.route("/logout", methods=['POST'])
 @login_required
 def logout():
     logout_user()
+    session.clear()
     return redirect(url_for("auth.login"))
 
 
@@ -53,8 +58,8 @@ def new_user():
     email = request.form.get("email", "").strip().lower()
     role = request.form.get("role", Role.VIEWER.value)
     password = request.form.get("password", "")
-    if not name or not email or not password:
-        flash("Name, email and password are required.", "error")
+    if not name or not email or len(password) < 12 or role not in [r.value for r in Role]:
+        flash("Name, email, a valid role and a password of at least 12 characters are required.", "error")
         return redirect(url_for("auth.users"))
     if User.query.filter_by(email=email).first():
         flash("A user with that email already exists.", "error")
@@ -95,5 +100,6 @@ def toggle_user(user_id):
         flash("You cannot deactivate yourself.", "error")
         return redirect(url_for("auth.users"))
     u.active = not u.active
+    audit.record('activate' if u.active else 'deactivate', 'user', u.id, f'Changed active status for {u.email}')
     db.session.commit()
     return redirect(url_for("auth.users"))

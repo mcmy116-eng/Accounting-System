@@ -22,6 +22,8 @@ def _next_invoice_number():
 
 
 def _parse_lines(form):
+    from app.validation import validate_lines, line_amount
+    validate_lines(form)
     descriptions = form.getlist("line_description[]")
     quantities = form.getlist("line_quantity[]")
     prices = form.getlist("line_price[]")
@@ -32,9 +34,11 @@ def _parse_lines(form):
     for i in range(len(descriptions)):
         if not descriptions[i].strip() and not prices[i]:
             continue
-        qty = float(quantities[i] or 1)
         unit_price_cents = cents(prices[i] or 0)
-        line_subtotal = round(qty * unit_price_cents)
+        account = db.session.get(Account, int(account_ids[i]))
+        if not account or not account.active or account.type != 'revenue':
+            raise LedgerError('Invoice lines require active revenue accounts.')
+        qty, line_subtotal = line_amount(quantities[i], unit_price_cents)
         tax_rate_id = int(tax_ids[i]) if tax_ids[i] else None
         tax_rate = TaxRate.query.get(tax_rate_id) if tax_rate_id else None
         tax_amount = round(line_subtotal * (tax_rate.rate / 100)) if tax_rate else 0
@@ -56,6 +60,17 @@ def _parse_lines(form):
 def index():
     status_filter = request.args.get("status", "")
     query = Invoice.query
+    q = request.args.get('q', '').strip()
+    if q:
+        from sqlalchemy import or_
+        query = query.join(Contact).filter(or_(Invoice.number.ilike('%'+q+'%'), Invoice.notes.ilike('%'+q+'%'), Contact.name.ilike('%'+q+'%')))
+    for key, field, comparison in [('start',Invoice.issue_date,'ge'),('end',Invoice.issue_date,'le')]:
+        if request.args.get(key):
+            dt=date.fromisoformat(request.args[key]);query=query.filter(field>=dt if comparison=='ge' else field<=dt)
+    if request.args.get('currency'):query=query.filter(Invoice.currency_code==request.args['currency'].upper())
+    for key, comparison in [('min_amount','ge'),('max_amount','le')]:
+        if request.args.get(key):
+            amount=cents(request.args[key]);query=query.filter(Invoice.total_cents>=amount if comparison=='ge' else Invoice.total_cents<=amount)
     if status_filter:
         query = query.filter_by(status=status_filter)
     invoices = query.order_by(Invoice.issue_date.desc(), Invoice.id.desc()).all()
@@ -124,6 +139,8 @@ def send(invoice_id):
         flash("You don't have permission to do that.", "error")
         return redirect(url_for("invoices.detail", invoice_id=invoice_id))
     inv = Invoice.query.get_or_404(invoice_id)
+    from app.controls import require_base_currency
+    require_base_currency(inv.currency_code)
     if inv.status != InvoiceStatus.DRAFT.value:
         flash("Only draft invoices can be sent/posted.", "error")
         return redirect(url_for("invoices.detail", invoice_id=invoice_id))
@@ -179,13 +196,15 @@ def void(invoice_id):
         flash("You don't have permission to do that.", "error")
         return redirect(url_for("invoices.detail", invoice_id=invoice_id))
     inv = Invoice.query.get_or_404(invoice_id)
+    if inv.status == InvoiceStatus.VOID.value:
+        return redirect(url_for('invoices.detail', invoice_id=inv.id))
     if inv.amount_paid_cents:
         flash("Cannot void an invoice that has payments applied. Refund/unapply first.", "error")
         return redirect(url_for("invoices.detail", invoice_id=invoice_id))
     if inv.journal_entry_id:
         from app.models import JournalEntry
         entry = JournalEntry.query.get(inv.journal_entry_id)
-        void_journal_entry(entry, created_by_id=current_user.id)
+        void_journal_entry(entry, created_by_id=current_user.id, reason=request.form.get('reason', 'Invoice void'))
     inv.status = InvoiceStatus.VOID.value
     db.session.commit()
     flash(f"Invoice {inv.number} voided.", "success")

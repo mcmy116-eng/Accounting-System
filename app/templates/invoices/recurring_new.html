@@ -2,7 +2,7 @@
 {% block title %}New Recurring Invoice{% endblock %}
 {% block page_title %}New Recurring Invoice Schedule{% endblock %}
 {% block content %}
-<form method="post">
+<form method="post">{% include '_form_tokens.html' %}
   <div class="card">
     <div class="grid grid-4">
       <div class="field">

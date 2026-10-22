@@ -27,7 +27,7 @@ def aging_buckets(items, as_of):
     buckets = {"current": 0, "1-30": 0, "31-60": 0, "61-90": 0, "90+": 0}
     detail = []
     for item, due_date, balance in items:
-        if balance <= 0:
+        if balance == 0:
             continue
         days = (as_of - due_date).days
         if days <= 0:
@@ -81,8 +81,8 @@ def build_pnl(start, end, cost_center_id=None):
     rep = Report("Profit & Loss", meta=meta, header=["Account", f"Amount ({ccy})"],
                  filename=f"profit_and_loss_{start}_{end}")
 
-    revenue = Account.query.filter_by(type=AccountType.REVENUE.value, active=True).order_by(Account.code).all()
-    expenses = Account.query.filter_by(type=AccountType.EXPENSE.value, active=True).order_by(Account.code).all()
+    revenue = Account.query.filter_by(type=AccountType.REVENUE.value).order_by(Account.code).all()
+    expenses = Account.query.filter_by(type=AccountType.EXPENSE.value).order_by(Account.code).all()
     cogs = [a for a in expenses if a.subtype == "cogs"]
     opex = [a for a in expenses if a.subtype != "cogs"]
 
@@ -125,9 +125,9 @@ def build_balance_sheet(as_of):
                 total += bal
         return total
 
-    assets = Account.query.filter_by(type=AccountType.ASSET.value, active=True).order_by(Account.code).all()
-    liabs = Account.query.filter_by(type=AccountType.LIABILITY.value, active=True).order_by(Account.code).all()
-    equity = Account.query.filter_by(type=AccountType.EQUITY.value, active=True).order_by(Account.code).all()
+    assets = Account.query.filter_by(type=AccountType.ASSET.value).order_by(Account.code).all()
+    liabs = Account.query.filter_by(type=AccountType.LIABILITY.value).order_by(Account.code).all()
+    equity = Account.query.filter_by(type=AccountType.EQUITY.value).order_by(Account.code).all()
     rev = Account.query.filter_by(type=AccountType.REVENUE.value).all()
     exp = Account.query.filter_by(type=AccountType.EXPENSE.value).all()
 
@@ -156,13 +156,13 @@ def build_cash_flow(start, end):
     net_income = sum(account_period_movement(a, start, end) for a in rev) - \
         sum(account_period_movement(a, start, end) for a in exp)
 
-    all_assets = Account.query.filter_by(type=AccountType.ASSET.value, active=True).all()
+    all_assets = Account.query.filter_by(type=AccountType.ASSET.value).all()
     wc_assets = [a for a in all_assets if not a.is_bank and a.code not in ("1400", "1450")]
     fixed = [a for a in all_assets if a.code in ("1400", "1450")]
-    liabs = Account.query.filter_by(type=AccountType.LIABILITY.value, active=True).all()
+    liabs = Account.query.filter_by(type=AccountType.LIABILITY.value).all()
     op_liab = [a for a in liabs if a.code != "2600"]
     fin_liab = [a for a in liabs if a.code == "2600"]
-    equity = Account.query.filter_by(type=AccountType.EQUITY.value, active=True).all()
+    equity = Account.query.filter_by(type=AccountType.EQUITY.value).all()
 
     wc_change = sum(account_period_movement(a, start, end) for a in wc_assets)
     liab_change = sum(account_period_movement(a, start, end) for a in op_liab)
@@ -226,17 +226,15 @@ def _aging_report(title, filename, items, as_of):
 
 def build_ar_aging(as_of=None):
     as_of = as_of or date.today()
-    invoices = Invoice.query.filter(Invoice.status.in_(
-        [InvoiceStatus.SENT.value, InvoiceStatus.PARTIAL.value, InvoiceStatus.OVERDUE.value])).all()
-    items = [(i, i.due_date, i.balance_due_cents()) for i in invoices]
+    from app.aging import aging_items
+    items = aging_items('invoice', as_of)
     return _aging_report("Accounts Receivable Aging", f"ar_aging_{as_of}", items, as_of)
 
 
 def build_ap_aging(as_of=None):
     as_of = as_of or date.today()
-    bills = Bill.query.filter(Bill.status.in_(
-        [BillStatus.APPROVED.value, BillStatus.PARTIAL.value])).all()
-    items = [(b, b.due_date, b.balance_due_cents()) for b in bills]
+    from app.aging import aging_items
+    items = aging_items('bill', as_of)
     return _aging_report("Accounts Payable Aging", f"ap_aging_{as_of}", items, as_of)
 
 

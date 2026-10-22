@@ -20,7 +20,7 @@
           <td class="num">{{ r.rate }}%</td>
           <td>{{ "Active" if r.active else "Inactive" }}</td>
           <td>{% if current_user.can_edit() %}
-            <form class="inline" method="post" action="{{ url_for('settings.toggle_tax_rate', rate_id=r.id) }}">
+            <form class="inline" method="post" action="{{ url_for('settings.toggle_tax_rate', rate_id=r.id) }}">{% include '_form_tokens.html' %}
               <button class="btn btn-sm" type="submit">{{ "Deactivate" if r.active else "Activate" }}</button>
             </form>
           {% endif %}</td>
@@ -32,7 +32,7 @@
   {% if current_user.can_edit() %}
   <div class="card">
     <h2>Add tax rate</h2>
-    <form method="post" action="{{ url_for('settings.new_tax_rate') }}">
+    <form method="post" action="{{ url_for('settings.new_tax_rate') }}">{% include '_form_tokens.html' %}
       <div class="field"><label>Name</label><input name="name" required placeholder="e.g. HK Standard VAT"></div>
       <div class="field"><label>Rate (%)</label><input type="number" step="0.01" name="rate" value="0" required></div>
       <button class="btn btn-primary" type="submit">Add</button>

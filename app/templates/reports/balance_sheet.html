@@ -15,19 +15,19 @@
   <div class="card">
     <h3>Assets</h3>
     <table>
-      {% for a, amt in asset_rows %}<tr><td>{{ a.code }} {{ a.name }}</td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
+      {% for a, amt in asset_rows %}<tr><td><a href="{{ url_for('accounts.ledger',account_id=a.id,start=start if start is defined else None,end=end if end is defined else as_of,cost_center_id=cost_center_id if cost_center_id is defined else None) }}">{{ a.code }} {{ a.name }}</a></td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
       <tr class="grand" style="font-weight:700;border-top:1px solid var(--border);"><td>Total assets</td><td class="num">{{ total_assets | money }}</td></tr>
     </table>
   </div>
   <div class="card">
     <h3>Liabilities</h3>
     <table>
-      {% for a, amt in liab_rows %}<tr><td>{{ a.code }} {{ a.name }}</td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
+      {% for a, amt in liab_rows %}<tr><td><a href="{{ url_for('accounts.ledger',account_id=a.id,start=start if start is defined else None,end=end if end is defined else as_of,cost_center_id=cost_center_id if cost_center_id is defined else None) }}">{{ a.code }} {{ a.name }}</a></td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
       <tr style="font-weight:700;border-top:1px solid var(--border);"><td>Total liabilities</td><td class="num">{{ total_liabilities | money }}</td></tr>
     </table>
     <h3 style="margin-top:20px;">Equity</h3>
     <table>
-      {% for a, amt in equity_rows %}<tr><td>{{ a.code }} {{ a.name }}</td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
+      {% for a, amt in equity_rows %}<tr><td><a href="{{ url_for('accounts.ledger',account_id=a.id,start=start if start is defined else None,end=end if end is defined else as_of,cost_center_id=cost_center_id if cost_center_id is defined else None) }}">{{ a.code }} {{ a.name }}</a></td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
       <tr><td>Retained earnings (cumulative net income)</td><td class="num">{{ retained_earnings | money }}</td></tr>
       <tr style="font-weight:700;border-top:1px solid var(--border);"><td>Total equity</td><td class="num">{{ total_equity | money }}</td></tr>
     </table>

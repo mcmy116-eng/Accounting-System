@@ -5,7 +5,7 @@
 <div>
   <a href="{{ url_for('invoices.pdf', invoice_id=invoice.id) }}" class="btn btn-sm" target="_blank">Download PDF</a>
   {% if current_user.can_edit() and invoice.status == 'draft' %}
-  <form class="inline" method="post" action="{{ url_for('invoices.send', invoice_id=invoice.id) }}" onsubmit="return confirm('Post this invoice to the ledger and mark as sent? This cannot be edited afterwards.');">
+  <form class="inline" method="post" action="{{ url_for('invoices.send', invoice_id=invoice.id) }}" onsubmit="return confirm('Post this invoice to the ledger and mark as sent? This cannot be edited afterwards.');">{% include '_form_tokens.html' %}
     <button class="btn btn-primary" type="submit">Post &amp; mark sent</button>
   </form>
   {% endif %}
@@ -13,13 +13,13 @@
   <a href="{{ url_for('payments.receive', invoice_id=invoice.id) }}" class="btn btn-primary">Record payment</a>
   {% endif %}
   {% if current_user.can_edit() and invoice.status == 'draft' %}
-  <form class="inline" method="post" action="{{ url_for('invoices.void', invoice_id=invoice.id) }}" onsubmit="return confirm('Void this invoice?');">
+  <form class="inline" method="post" action="{{ url_for('invoices.void', invoice_id=invoice.id) }}" onsubmit="return confirm('Void this invoice?');">{% include '_form_tokens.html' %}
     <button class="btn btn-danger" type="submit">Void</button>
   </form>
   {% endif %}
 </div>
 {% endblock %}
-{% block content %}
+{% block content %}{% if invoice.journal_entry_id %}<p><a href="{{ url_for('books.detail',entry_id=invoice.journal_entry_id) }}">Journal, evidence, payments and bank matches</a></p>{% endif %}
 <div class="grid grid-2">
   <div class="card">
     <h3>Bill to</h3>

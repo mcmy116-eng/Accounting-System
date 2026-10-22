@@ -7,7 +7,7 @@
   {% if current_user.can_edit() %}<a href="{{ url_for('invoices.new') }}" class="btn btn-primary">New invoice</a>{% endif %}
 </div>
 {% endblock %}
-{% block content %}
+{% block content %}<form method="get" class="card"><input name="q" placeholder="Invoice, customer or note" value="{{ request.args.get('q','') }}"><input type="date" name="start" value="{{ request.args.get('start','') }}"><input type="date" name="end" value="{{ request.args.get('end','') }}"><input name="min_amount" placeholder="Min amount" value="{{ request.args.get('min_amount','') }}"><input name="max_amount" placeholder="Max amount" value="{{ request.args.get('max_amount','') }}"><input name="currency" placeholder="Currency" value="{{ request.args.get('currency','') }}"><input name="status" placeholder="Status" value="{{ status_filter }}"><button class="btn">Search</button></form>
 <div class="card">
   <div class="toolbar">
     <div class="filters">

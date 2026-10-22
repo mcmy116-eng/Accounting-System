@@ -1,3 +1,6 @@
+import hashlib
+from pathlib import Path
+from werkzeug.utils import secure_filename
 """Staff expense-claim workflow.
 
 Lifecycle: Draft -> Submitted -> AI Reviewed -> Pending Approval ->
@@ -245,7 +248,7 @@ def upload(claim_id):
     filepath = os.path.join(current_app.config["UPLOAD_FOLDER"], stored_name)
     file.save(filepath)
     doc = Document(
-        filename=file.filename, filepath=filepath, mimetype=MIME_MAP.get(ext, ""),
+        filename=secure_filename(file.filename)[:255] or "receipt", filepath=filepath, sha256=hashlib.sha256(Path(filepath).read_bytes()).hexdigest(), mimetype=MIME_MAP.get(ext, ""),
         uploaded_by_id=current_user.id, extraction_status=DocStatus.PENDING.value,
         claim_id=claim.id,
     )
@@ -391,6 +394,8 @@ def clarify(claim_id):
     if not current_user.can_approve_claims():
         abort(403)
     claim = ExpenseClaim.query.get_or_404(claim_id)
+    if claim.journal_entry_id or claim.status in (ClaimStatus.APPROVED.value, ClaimStatus.PAID.value):
+        abort(409, 'Posted claims cannot be reopened for editing. Use a documented reversal.')
     claim.status = ClaimStatus.CLARIFICATION.value
     claim.reviewer_notes = request.form.get("notes", "").strip()
     audit.record("clarify", "claim", claim.id, f"Requested clarification on {claim.number}: {claim.reviewer_notes[:200]}")
@@ -425,11 +430,18 @@ def pay(claim_id):
 
 
 def _post_claim(claim):
+    from app.controls import require_base_currency
+    require_base_currency(claim.currency_code)
+    if claim.journal_entry_id:
+        abort(409, 'This claim already has a posted entry.')
     reimb = get_system_account("2550")
     tax_receivable = get_system_account("1500")
     je_lines = []
     tax_total = 0
     for l in claim.lines:
+        account=db.session.get(Account,l.account_id)
+        if not account or not account.active or account.type!='expense':
+            abort(409,'Claim lines require active expense accounts.')
         je_lines.append({
             "account_id": l.account_id,
             "debit_cents": l.amount_cents,
@@ -458,6 +470,8 @@ def _post_claim(claim):
 
 
 def _pay_claim(claim, bank):
+    if not bank.active or bank.currency_code != claim.currency_code:
+        abort(409, 'Choose an active bank in the claim currency.')
     reimb = get_system_account("2550")
     je_lines = [
         {"account_id": reimb.id, "debit_cents": claim.total_cents, "credit_cents": 0,
@@ -477,16 +491,8 @@ def _pay_claim(claim, bank):
 @login_required
 def document_file(doc_id):
     doc = Document.query.get_or_404(doc_id)
-    if doc.claim_id and current_user.is_staff_only():
-        claim = ExpenseClaim.query.get(doc.claim_id)
-        if not claim or claim.staff_id != current_user.id:
-            abort(403)
-    with open(doc.filepath, "rb") as f:
-        data = f.read()
-    resp = make_response(data)
-    resp.headers["Content-Type"] = doc.mimetype or "application/octet-stream"
-    resp.headers["Content-Disposition"] = f"inline; filename={doc.filename}"
-    return resp
+    from app.controls import document_response
+    return document_response(doc)
 
 
 @bp.route("/export.csv")
@@ -499,7 +505,11 @@ def export_csv():
         query = query.filter_by(staff_id=current_user.id)
     claims = query.order_by(ExpenseClaim.claim_date).all()
     buf = io.StringIO()
-    w = csv.writer(buf)
+    from app.report_export import safe_cell
+    class SafeWriter:
+        def writerow(self, row): writer.writerow([safe_cell(x) for x in row])
+    writer = csv.writer(buf)
+    w = SafeWriter()
     w.writerow(["Claim", "Staff", "Date", "Title", "Purpose", "Line merchant",
                 "Line description", "Category (GL)", "Amount", "Tax", "Currency", "Status"])
     for c in claims:

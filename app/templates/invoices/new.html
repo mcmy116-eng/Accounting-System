@@ -2,7 +2,7 @@
 {% block title %}New Invoice{% endblock %}
 {% block page_title %}New Invoice{% endblock %}
 {% block content %}
-<form method="post">
+<form method="post">{% include '_form_tokens.html' %}
   <div class="card">
     <div class="grid grid-4">
       <div class="field">

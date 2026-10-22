@@ -6,6 +6,8 @@ from app.extensions import db, login_manager
 def create_app():
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+    if os.environ.get('RENDER') and (not os.environ.get('SECRET_KEY') or os.environ['SECRET_KEY']=='dev-secret-change-me'):
+        raise RuntimeError('Production requires a private SECRET_KEY in service Secrets.')
     basedir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     db_path = os.environ.get("DATABASE_PATH", os.path.join(basedir, "instance", "accounting.db"))
     database_url = os.environ.get("DATABASE_URL", f"sqlite:///{db_path}")
@@ -29,7 +31,8 @@ def create_app():
 
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        user = db.session.get(User, int(user_id))
+        return user if user and user.active else None
 
     from app.blueprints.auth import bp as auth_bp
     from app.blueprints.dashboard import bp as dashboard_bp
@@ -56,6 +59,11 @@ def create_app():
     app.register_blueprint(settings_bp)
     app.register_blueprint(claims_bp)
     app.register_blueprint(integrations_bp)
+    from app.blueprints.books import bp as books_bp
+    app.register_blueprint(books_bp)
+
+    from app.controls import configure_controls
+    configure_controls(app)
 
     from app.models import money as money_fn
     app.jinja_env.filters["money"] = money_fn

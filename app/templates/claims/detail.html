@@ -48,7 +48,7 @@
       {% endif %}
 
       {% if editable %}
-      <form method="post" action="{{ url_for('claims.save', claim_id=claim.id) }}">
+      <form method="post" action="{{ url_for('claims.save', claim_id=claim.id) }}">{% include '_form_tokens.html' %}
         <div class="field">
           <label>Title</label>
           <input type="text" name="title" value="{{ claim.title }}">
@@ -172,23 +172,23 @@
     <div class="card">
       <h3>Actions</h3>
       {% if claim.staff_id == current_user.id and claim.status in ['draft','clarification','ai_reviewed'] %}
-      <form method="post" action="{{ url_for('claims.submit', claim_id=claim.id) }}" class="inline">
+      <form method="post" action="{{ url_for('claims.submit', claim_id=claim.id) }}" class="inline">{% include '_form_tokens.html' %}
         <button class="btn btn-primary" type="submit">Submit for approval</button>
       </form>
       {% endif %}
 
       {% if can_approve %}
         {% if claim.status not in ['approved','paid','rejected'] %}
-        <form method="post" action="{{ url_for('claims.approve', claim_id=claim.id) }}" class="inline">
+        <form method="post" action="{{ url_for('claims.approve', claim_id=claim.id) }}" class="inline">{% include '_form_tokens.html' %}
           <button class="btn btn-primary" type="submit">Approve &amp; post</button>
         </form>
         <details style="margin-top:10px;">
           <summary class="muted">Request clarification / reject</summary>
-          <form method="post" action="{{ url_for('claims.clarify', claim_id=claim.id) }}" style="margin-top:8px;">
+          <form method="post" action="{{ url_for('claims.clarify', claim_id=claim.id) }}" style="margin-top:8px;">{% include '_form_tokens.html' %}
             <textarea name="notes" rows="2" placeholder="What do you need from the claimant?"></textarea>
             <button class="btn btn-sm" type="submit">Send back for clarification</button>
           </form>
-          <form method="post" action="{{ url_for('claims.reject', claim_id=claim.id) }}" style="margin-top:8px;">
+          <form method="post" action="{{ url_for('claims.reject', claim_id=claim.id) }}" style="margin-top:8px;">{% include '_form_tokens.html' %}
             <textarea name="notes" rows="2" placeholder="Reason for rejection"></textarea>
             <button class="btn btn-sm btn-danger" type="submit">Reject</button>
           </form>
@@ -196,7 +196,7 @@
         {% endif %}
 
         {% if claim.status == 'approved' %}
-        <form method="post" action="{{ url_for('claims.pay', claim_id=claim.id) }}">
+        <form method="post" action="{{ url_for('claims.pay', claim_id=claim.id) }}">{% include '_form_tokens.html' %}
           <div class="field"><label>Reimburse from bank account</label>
             <select name="bank_account_id" required>
               <option value="">— choose —</option>
@@ -221,7 +221,7 @@
     <div class="card">
       <h3>Receipts</h3>
       {% if editable %}
-      <form method="post" action="{{ url_for('claims.upload', claim_id=claim.id) }}" enctype="multipart/form-data">
+      <form method="post" action="{{ url_for('claims.upload', claim_id=claim.id) }}" enctype="multipart/form-data">{% include '_form_tokens.html' %}
         <div class="field">
           <label>Add a receipt (photo or PDF)</label>
           <input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif" capture="environment" required>

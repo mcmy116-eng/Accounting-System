@@ -1,4 +1,5 @@
 import io
+from xml.sax.saxutils import escape
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
@@ -22,14 +23,14 @@ def invoice_pdf(invoice):
     styles = _styles()
     story = []
 
-    story.append(Paragraph(settings.company_name if settings else "Company", styles["DocTitle"]))
+    story.append(Paragraph(escape(settings.company_name) if settings else "Company", styles["DocTitle"]))
     if settings and settings.legal_address:
-        story.append(Paragraph(settings.legal_address.replace("\n", "<br/>"), styles["Small"]))
+        story.append(Paragraph(escape(settings.legal_address).replace("\n", "<br/>"), styles["Small"]))
     story.append(Spacer(1, 10 * mm))
-    story.append(Paragraph(f"INVOICE {invoice.number}", styles["Heading1"]))
-    story.append(Paragraph(f"Bill to: {invoice.contact.name}", styles["Normal"]))
+    story.append(Paragraph(escape(f"INVOICE {invoice.number}"), styles["Heading1"]))
+    story.append(Paragraph(escape(f"Bill to: {invoice.contact.name}"), styles["Normal"]))
     if invoice.contact.address:
-        story.append(Paragraph(invoice.contact.address.replace("\n", "<br/>"), styles["Small"]))
+        story.append(Paragraph(escape(invoice.contact.address).replace("\n", "<br/>"), styles["Small"]))
     story.append(Spacer(1, 4 * mm))
     story.append(Paragraph(
         f"Issue date: {invoice.issue_date.isoformat()} &nbsp;&nbsp; Due date: {invoice.due_date.isoformat()} "
@@ -80,7 +81,7 @@ def invoice_pdf(invoice):
     if invoice.notes:
         story.append(Spacer(1, 8 * mm))
         story.append(Paragraph("Notes", styles["Heading3"]))
-        story.append(Paragraph(invoice.notes.replace("\n", "<br/>"), styles["Normal"]))
+        story.append(Paragraph(escape(invoice.notes).replace("\n", "<br/>"), styles["Normal"]))
 
     doc.build(story)
     buf.seek(0)

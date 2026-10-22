@@ -6,3 +6,5 @@ uploads/
 .env
 *.db
 .DS_Store
+.venv/
+*.backup

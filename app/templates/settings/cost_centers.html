@@ -21,7 +21,7 @@
           <td>{{ c.name }}</td>
           <td>{{ "Active" if c.active else "Inactive" }}</td>
           <td>{% if current_user.can_edit() %}
-            <form class="inline" method="post" action="{{ url_for('settings.toggle_cost_center', cc_id=c.id) }}">
+            <form class="inline" method="post" action="{{ url_for('settings.toggle_cost_center', cc_id=c.id) }}">{% include '_form_tokens.html' %}
               <button class="btn btn-sm" type="submit">{{ "Deactivate" if c.active else "Activate" }}</button>
             </form>
           {% endif %}</td>
@@ -33,7 +33,7 @@
   {% if current_user.can_edit() %}
   <div class="card">
     <h2>Add cost center</h2>
-    <form method="post" action="{{ url_for('settings.new_cost_center') }}">
+    <form method="post" action="{{ url_for('settings.new_cost_center') }}">{% include '_form_tokens.html' %}
       <div class="field"><label>Code</label><input name="code" required placeholder="e.g. RETAIL"></div>
       <div class="field"><label>Name</label><input name="name" required></div>
       <button class="btn btn-primary" type="submit">Add</button>

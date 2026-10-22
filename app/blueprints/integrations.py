@@ -6,11 +6,11 @@ any signed-in bookkeeper/admin; changes and syncs require edit rights.
 """
 from datetime import date, timedelta
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
 from flask_login import login_required, current_user
 
 from app.extensions import db
-from app.models import SalesIntegration, SyncedOrder, CostCenter, Account
+from app.models import SalesIntegration, SyncedOrder, CostCenter, Account, IntegrationReview, JournalEntry
 from app import shopify_sync
 from app.audit import record
 
@@ -23,6 +23,7 @@ def _period():
     end = request.values.get("end")
     start = date.fromisoformat(start) if start else today.replace(day=1)
     end = date.fromisoformat(end) if end else today
+    if start>end:abort(400,'Start date must not follow end date.')
     return start, end
 
 
@@ -38,7 +39,7 @@ def index():
     start, end = _period()
     return render_template(
         "integrations/index.html", integrations=integrations, recent=recent,
-        cost_centers=cost_centers, start=start, end=end,
+        cost_centers=cost_centers, start=start, end=end, reviews=IntegrationReview.query.filter_by(status='pending').all(),
     )
 
 
@@ -56,6 +57,10 @@ def save_shopify():
 
     integ.name = request.form.get("name", "").strip()
     integ.shop_domain = request.form.get("shop_domain", "").strip()
+    try:
+        shopify_sync._endpoint(integ.shop_domain, integ.api_version or '2024-10')
+    except shopify_sync.ShopifyError as e:
+        abort(400, str(e))
     token = request.form.get("access_token", "").strip()
     if token and token != "__unchanged__":
         integ.access_token = token
@@ -63,11 +68,14 @@ def save_shopify():
     try:
         integ.fx_rate = float(request.form.get("fx_rate") or 1.0)
     except ValueError:
-        integ.fx_rate = 1.0
+        abort(400, 'Invalid FX rate; it was not replaced with 1:1.')
     try:
         integ.fee_percent = float(request.form.get("fee_percent") or 0.0)
     except ValueError:
-        integ.fee_percent = 0.0
+        abort(400, 'Invalid fee percentage.')
+    import math
+    if not math.isfinite(integ.fx_rate) or integ.fx_rate <= 0 or not math.isfinite(integ.fee_percent) or not 0 <= integ.fee_percent < 100:
+        abort(400, 'Enter a positive verified FX rate and a fee below 100%.')
     integ.cost_center_id = request.form.get("cost_center_id", type=int) or None
     integ.active = bool(request.form.get("active"))
     db.session.commit()
@@ -99,6 +107,7 @@ def run_sync(iid):
         flash("You don't have permission to do that.", "error")
         return redirect(url_for("integrations.index"))
     integ = SalesIntegration.query.get_or_404(iid)
+    if not integ.active:abort(409,'Enable and review the connection before syncing.')
     start, end = _period()
     try:
         res = shopify_sync.sync(integ, start, end, created_by_id=current_user.id)
@@ -129,3 +138,23 @@ def delete(iid):
     db.session.commit()
     flash("Integration removed.", "success")
     return redirect(url_for("integrations.index"))
+
+
+@bp.route('/reviews/<int:review_id>/resolve',methods=['POST'])
+@login_required
+def resolve(review_id):
+    if not current_user.can_edit():abort(403)
+    review=IntegrationReview.query.get_or_404(review_id)
+    if review.status!='pending':abort(409,'Review already resolved.')
+    reason=request.form.get('reason','').strip()
+    entry=JournalEntry.query.get_or_404(request.form.get('journal_entry_id',type=int))
+    from app.models import Document
+    if not reason or not entry.is_posted or entry.reference != f'SALES-REVIEW-{review.id}' or not Document.query.filter_by(journal_entry_id=entry.id).first():
+        abort(409,'Attach the source refund/change evidence to a posted adjustment with reference SALES-REVIEW-'+str(review.id))
+    review.status='resolved';review.journal_entry_id=entry.id
+    import json
+    original=SyncedOrder.query.filter_by(integration_id=review.integration_id,external_id=review.external_id).first()
+    if original:
+        original.source_snapshot=json.dumps(json.loads(review.detail)['updated_order'],sort_keys=True,default=str)
+    record('resolve','integration_review',review.id,reason,{'journal_id':entry.id,'external_id':review.external_id})
+    db.session.commit();return redirect(url_for('integrations.index'))
