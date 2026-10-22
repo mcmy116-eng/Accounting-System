@@ -423,6 +423,14 @@ class MutationReceipt(db.Model):
     created_at = db.Column(db.DateTime, default=now)
 
 
+class SampleDataBundle(db.Model):
+    __tablename__ = 'sample_data_bundles'
+    key = db.Column(db.String(80), primary_key=True)
+    status = db.Column(db.String(20), nullable=False)
+    manifest_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=now)
+
+
 class JournalReversal(db.Model):
     __tablename__ = 'journal_reversals'
     original_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), primary_key=True)

@@ -31,6 +31,7 @@
       <div class="section-label">Books</div>
       <a href="{{ url_for('books.index') }}">Journal search &amp; evidence</a>
       <a href="{{ url_for('books.close') }}">Month close</a>
+      {% if dummy_bundle %}<a href="{{ url_for('settings.dummy_data') }}">Dummy/testing 數</a>{% endif %}
       <a href="{{ url_for('accounts.index') }}" class="{{ 'active' if request.blueprint=='accounts' }}">Chart of Accounts</a>
       <a href="{{ url_for('reports.index') }}" class="{{ 'active' if request.blueprint=='reports' }}">Reports</a>
       <div class="section-label">Admin</div>
@@ -60,6 +61,10 @@
       {% endwith %}
     </div>
     <div class="content">
+      {% if dummy_bundle %}<div class="flash" style="background:#fff3cd;color:#664d03;border:1px solid #e6c65c;">
+        <strong>Dummy/testing 數</strong>：本帳簿包含測試交易，報表會計入這些數字；不代表公司實際收入、支出或銀行結餘。
+        <a href="{{ url_for('settings.dummy_data') }}">查看示例及預期結果</a>
+      </div>{% endif %}
       {% block content %}{% endblock %}
     </div>
   </div>
