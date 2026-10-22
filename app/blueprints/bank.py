@@ -2,7 +2,7 @@ import csv
 import io
 import uuid
 from datetime import date, datetime
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
 from flask_login import login_required, current_user
 
 from app.extensions import db
@@ -50,13 +50,15 @@ def new():
         db.session.add(bank)
         db.session.flush()
 
+        from app.controls import require_base_currency
+        require_base_currency(bank.currency_code)
         if opening:
             equity = Account.query.filter_by(code="3000").first()
             create_journal_entry(
-                date.today(), f"Opening balance for {name}",
+                date.fromisoformat(request.form.get("opening_date") or date.today().isoformat()), f"Opening balance for {name}",
                 [
-                    {"account_id": gl.id, "debit_cents": opening, "credit_cents": 0, "description": "Opening balance"},
-                    {"account_id": equity.id, "debit_cents": 0, "credit_cents": opening, "description": "Opening balance"},
+                    {"account_id": gl.id, "debit_cents": max(opening, 0), "credit_cents": max(-opening, 0), "description": "Opening balance"},
+                    {"account_id": equity.id, "debit_cents": max(-opening, 0), "credit_cents": max(opening, 0), "description": "Opening balance"},
                 ],
                 source_type="manual", created_by_id=current_user.id,
             )
@@ -86,53 +88,12 @@ def import_csv(bank_id):
         flash("Choose a CSV file.", "error")
         return redirect(url_for("bank.detail", bank_id=bank_id))
 
-    content = file.stream.read().decode("utf-8-sig", errors="replace")
-    reader = csv.DictReader(io.StringIO(content))
-    fieldnames_lower = {f.lower().strip(): f for f in (reader.fieldnames or [])}
-
-    date_key = next((fieldnames_lower[k] for k in fieldnames_lower if "date" in k), None)
-    desc_key = next((fieldnames_lower[k] for k in fieldnames_lower if "desc" in k or "memo" in k or "narrative" in k), None)
-    amount_key = next((fieldnames_lower[k] for k in fieldnames_lower if k == "amount"), None)
-    debit_key = next((fieldnames_lower[k] for k in fieldnames_lower if "debit" in k or "withdrawal" in k or "out" in k), None)
-    credit_key = next((fieldnames_lower[k] for k in fieldnames_lower if "credit" in k or "deposit" in k or "in" == k), None)
-
-    if not date_key or (not amount_key and not (debit_key or credit_key)):
-        flash("Couldn't detect date/amount columns. Expected headers like Date, Description, Amount "
-              "(or Date, Description, Debit, Credit).", "error")
-        return redirect(url_for("bank.detail", bank_id=bank_id))
-
-    batch = uuid.uuid4().hex[:10]
-    count = 0
-    for row in reader:
-        raw_date = (row.get(date_key) or "").strip()
-        if not raw_date:
-            continue
-        parsed_date = None
-        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
-            try:
-                parsed_date = datetime.strptime(raw_date, fmt).date()
-                break
-            except ValueError:
-                continue
-        if not parsed_date:
-            continue
-
-        if amount_key:
-            amt = cents(row.get(amount_key) or 0)
-        else:
-            debit = cents(row.get(debit_key) or 0) if debit_key else 0
-            credit = cents(row.get(credit_key) or 0) if credit_key else 0
-            amt = credit - debit
-
-        desc = (row.get(desc_key) or "").strip() if desc_key else ""
-        db.session.add(BankTransaction(
-            bank_account_id=bank.id, date=parsed_date, description=desc,
-            amount_cents=amt, import_batch=batch, status="unmatched",
-        ))
-        count += 1
-    db.session.commit()
-    flash(f"Imported {count} transactions.", "success")
-    return redirect(url_for("bank.detail", bank_id=bank_id))
+    from app.bank_import import import_statement
+    if not bank.active:
+        abort(409, 'Bank account is inactive.')
+    count, message = import_statement(bank, file)
+    flash(message, 'success')
+    return redirect(url_for('bank.detail', bank_id=bank_id))
 
 
 @bp.route("/<int:bank_id>/reconcile")
@@ -160,6 +121,16 @@ def match(bank_id):
     txn_id = int(request.form["txn_id"])
     line_id = int(request.form["line_id"])
     txn = BankTransaction.query.get_or_404(txn_id)
+    bank = BankAccount.query.get_or_404(bank_id)
+    line = JournalLine.query.get_or_404(line_id)
+    if (not bank.active or txn.bank_account_id != bank.id or txn.status != 'unmatched'
+            or txn.matched_journal_line_id is not None or not line.entry.is_posted
+            or line.account_id != bank.gl_account_id
+            or line.debit_cents - line.credit_cents != txn.amount_cents
+            or BankTransaction.query.filter_by(matched_journal_line_id=line.id).first()):
+        abort(409, 'Match rejected: bank, amount, posting or existing match does not agree.')
+    from app import audit
+    audit.record('match', 'bank_transaction', txn.id, f'Matched journal line {line.id}')
     txn.matched_journal_line_id = line_id
     txn.status = "matched"
     db.session.commit()
@@ -180,6 +151,15 @@ def quick_entry(bank_id):
     contra_account_id = int(request.form["contra_account_id"])
     txn = BankTransaction.query.get_or_404(txn_id)
 
+    if (not bank.active or txn.bank_account_id != bank.id or txn.status != 'unmatched'
+            or txn.matched_journal_line_id is not None
+            or JournalEntry.query.filter_by(source_type='bank', source_id=txn.id).first()):
+        abort(409, 'This bank transaction is already posted/matched or belongs to another bank.')
+    from app.controls import require_base_currency
+    require_base_currency(bank.currency_code)
+    contra = Account.query.get_or_404(contra_account_id)
+    if not contra.active or contra.id == bank.gl_account_id:
+        abort(409, 'Choose a different active contra account.')
     amount = abs(txn.amount_cents)
     if txn.amount_cents >= 0:
         lines = [
@@ -195,6 +175,7 @@ def quick_entry(bank_id):
         entry = create_journal_entry(txn.date, txn.description or "Bank transaction", lines,
                                       source_type="bank", source_id=txn.id, created_by_id=current_user.id)
     except LedgerError as e:
+        db.session.rollback()
         flash(str(e), "error")
         return redirect(url_for("bank.reconcile", bank_id=bank_id))
 
@@ -209,8 +190,17 @@ def quick_entry(bank_id):
 @bp.route("/<int:bank_id>/reconcile-line/<int:line_id>", methods=["POST"])
 @login_required
 def reconcile_line(bank_id, line_id):
-    txn = BankTransaction.query.filter_by(matched_journal_line_id=line_id).first()
-    if txn:
-        txn.status = "reconciled"
+    if not current_user.can_edit():
+        abort(403)
+    bank = BankAccount.query.get_or_404(bank_id)
+    line = JournalLine.query.get_or_404(line_id)
+    txn = BankTransaction.query.filter_by(bank_account_id=bank_id, matched_journal_line_id=line_id).first()
+    if (not txn or line.account_id != bank.gl_account_id or not line.entry.is_posted
+            or txn.amount_cents != line.debit_cents - line.credit_cents):
+        abort(409, 'The bank match must be valid before reconciliation.')
+    if txn.status == 'matched':
+        txn.status = 'reconciled'
+        from app import audit
+        audit.record('reconcile', 'bank_transaction', txn.id, f'Journal line {line.id}')
         db.session.commit()
-    return redirect(url_for("bank.reconcile", bank_id=bank_id))
+    return redirect(url_for('bank.reconcile', bank_id=bank_id))

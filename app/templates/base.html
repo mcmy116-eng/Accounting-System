@@ -29,6 +29,8 @@
       <a href="{{ url_for('payments.index') }}" class="{{ 'active' if request.blueprint=='payments' }}">Payments</a>
       <a href="{{ url_for('integrations.index') }}" class="{{ 'active' if request.blueprint=='integrations' }}">Sales Channels</a>
       <div class="section-label">Books</div>
+      <a href="{{ url_for('books.index') }}">Journal search &amp; evidence</a>
+      <a href="{{ url_for('books.close') }}">Month close</a>
       <a href="{{ url_for('accounts.index') }}" class="{{ 'active' if request.blueprint=='accounts' }}">Chart of Accounts</a>
       <a href="{{ url_for('reports.index') }}" class="{{ 'active' if request.blueprint=='reports' }}">Reports</a>
       <div class="section-label">Admin</div>
@@ -41,7 +43,8 @@
     </nav>
     <div class="user-box">
       {{ current_user.name }}<br>
-      <span class="muted">{{ current_user.role }}</span> · <a href="{{ url_for('auth.logout') }}">Log out</a>
+      <span class="muted">{{ current_user.role }}</span>
+      <form method="post" action="{{ url_for('auth.logout') }}">{% include '_form_tokens.html' %}<button class="btn btn-sm" type="submit">Log out</button></form>
     </div>
   </aside>
   <div class="main">

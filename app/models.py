@@ -16,6 +16,8 @@ def cents(amount) -> int:
         return 0
     from decimal import Decimal, ROUND_HALF_UP
     d = Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if not d.is_finite() or abs(d) > Decimal('21474836.47'):
+        raise ValueError('Amount is not finite or exceeds supported precision.')
     return int(d * 100)
 
 
@@ -119,6 +121,10 @@ class User(UserMixin, db.Model):
 
     def can_approve_claims(self):
         return self.role in (Role.ADMIN.value, Role.BOOKKEEPER.value)
+
+    @property
+    def is_active(self):
+        return bool(self.active)
 
 
 class CompanySettings(db.Model):
@@ -226,6 +232,9 @@ class Document(db.Model):
     extraction_error = db.Column(db.Text, default="")
     bill_id = db.Column(db.Integer, db.ForeignKey("bills.id"), nullable=True)
     claim_id = db.Column(db.Integer, db.ForeignKey("expense_claims.id"), nullable=True)
+    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
+    sha256 = db.Column(db.String(64), nullable=True)
+    drive_file_id = db.Column(db.String(200), nullable=True)
 
 
 class JournalEntry(db.Model):
@@ -395,8 +404,54 @@ class BankTransaction(db.Model):
     import_batch = db.Column(db.String(60), default="")
     status = db.Column(db.String(20), default="unmatched")  # unmatched/matched/reconciled
     matched_journal_line_id = db.Column(db.Integer, db.ForeignKey("journal_lines.id"), nullable=True)
+    source_key = db.Column(db.String(128), nullable=True)
 
     bank_account = db.relationship("BankAccount")
+
+
+class LedgerControl(db.Model):
+    __tablename__ = 'ledger_control'
+    id = db.Column(db.Integer, primary_key=True)
+    locked_through = db.Column(db.Date, nullable=True)
+
+
+class MutationReceipt(db.Model):
+    __tablename__ = 'mutation_receipts'
+    key = db.Column(db.String(64), primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False)
+    endpoint = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=now)
+
+
+class JournalReversal(db.Model):
+    __tablename__ = 'journal_reversals'
+    original_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), primary_key=True)
+    reversal_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), unique=True, nullable=False)
+    reason = db.Column(db.String(500), nullable=False)
+
+
+class BankImport(db.Model):
+    __tablename__ = 'bank_imports'
+    id = db.Column(db.Integer, primary_key=True)
+    bank_account_id = db.Column(db.Integer, db.ForeignKey('bank_accounts.id'), nullable=False)
+    sha256 = db.Column(db.String(64), nullable=False)
+    filepath = db.Column(db.String(500), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=now)
+    __table_args__ = (db.UniqueConstraint('bank_account_id', 'sha256', name='uq_bank_import'),)
+
+
+class IntegrationReview(db.Model):
+    __tablename__ = 'integration_reviews'
+    id = db.Column(db.Integer, primary_key=True)
+    integration_id = db.Column(db.Integer, db.ForeignKey('sales_integrations.id'), nullable=False)
+    external_id = db.Column(db.String(120), nullable=False)
+    payload_hash = db.Column(db.String(64), nullable=False)
+    detail = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), default='pending')
+    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=now)
+    __table_args__ = (db.UniqueConstraint('integration_id', 'external_id', 'payload_hash', name='uq_integration_review'),)
 
 
 class Payment(db.Model):
@@ -588,6 +643,7 @@ class SyncedOrder(db.Model):
     gross_cents = db.Column(db.Integer, default=0)            # order total in base currency
     journal_entry_id = db.Column(db.Integer, db.ForeignKey("journal_entries.id"), nullable=True)
     synced_at = db.Column(db.DateTime, default=now)
+    source_snapshot = db.Column(db.Text, nullable=True)
 
     integration = db.relationship("SalesIntegration")
     journal_entry = db.relationship("JournalEntry")

@@ -3,6 +3,8 @@
 {% block page_title %}{{ "Accounts Receivable Aging" if kind == "invoice" else "Accounts Payable Aging" }}{% endblock %}
 {% block topbar_actions %}{% set slug = 'ar-aging' if kind == 'invoice' else 'ap-aging' %}{% include 'reports/_export.html' %}{% endblock %}
 {% block content %}
+<form method="get" class="card"><label>As of <input type="date" name="as_of" value="{{ as_of }}"></label><button class="btn">Apply</button></form>
+<p>Balances as of {{ as_of }}. Later payments and reversals are excluded. Credit balances remain visible for review.</p>
 <div class="grid grid-4" style="grid-template-columns:repeat(5,1fr);">
   {% for bucket, amt in buckets.items() %}
   <div class="kpi"><div class="label">{{ bucket }}</div><div class="value">{{ amt | money }}</div></div>

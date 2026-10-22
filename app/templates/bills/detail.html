@@ -7,13 +7,13 @@
   <a href="{{ url_for('payments.pay', bill_id=bill.id) }}" class="btn btn-primary">Record payment</a>
   {% endif %}
   {% if current_user.can_edit() and bill.status == 'approved' and not bill.amount_paid_cents %}
-  <form class="inline" method="post" action="{{ url_for('bills.void', bill_id=bill.id) }}" onsubmit="return confirm('Void this bill?');">
+  <form class="inline" method="post" action="{{ url_for('bills.void', bill_id=bill.id) }}" onsubmit="return confirm('Void this bill?');">{% include '_form_tokens.html' %}
     <button class="btn btn-danger" type="submit">Void</button>
   </form>
   {% endif %}
 </div>
 {% endblock %}
-{% block content %}
+{% block content %}{% if bill.journal_entry_id %}<p><a href="{{ url_for('books.detail',entry_id=bill.journal_entry_id) }}">Journal, evidence, payments and bank matches</a></p>{% endif %}
 <div class="grid grid-2">
   <div class="card">
     <h3>Vendor</h3>

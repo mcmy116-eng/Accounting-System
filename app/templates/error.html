@@ -1,0 +1,4 @@
+{% extends 'base.html' %}
+{% block page_title %}Request not saved ({{ code }}){% endblock %}
+{% block content %}<div class="card"><p>{{ message }}</p><p><a href="{{ url_for('dashboard.index') }}">Return to dashboard</a></p></div>{% endblock %}
+{% block guest_content %}<div class="card"><p>{{ message }}</p><a href="{{ url_for('auth.login') }}">Log in again</a></div>{% endblock %}

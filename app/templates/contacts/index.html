@@ -22,7 +22,7 @@
           <td>{{ c.currency_code }}</td>
           <td>
             {% if current_user.can_edit() %}
-            <form class="inline" method="post" action="{{ url_for('contacts.archive', contact_id=c.id) }}" onsubmit="return confirm('Archive this contact?');">
+            <form class="inline" method="post" action="{{ url_for('contacts.archive', contact_id=c.id) }}" onsubmit="return confirm('Archive this contact?');">{% include '_form_tokens.html' %}
               <button class="btn btn-sm" type="submit">Archive</button>
             </form>
             {% endif %}
@@ -37,7 +37,7 @@
   {% if current_user.can_edit() %}
   <div class="card">
     <h2>New contact</h2>
-    <form method="post" action="{{ url_for('contacts.new') }}">
+    <form method="post" action="{{ url_for('contacts.new') }}">{% include '_form_tokens.html' %}
       <div class="field"><label>Name</label><input name="name" required></div>
       <div class="field">
         <label>Type</label>

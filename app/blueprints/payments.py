@@ -1,5 +1,5 @@
 from datetime import date
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
 from flask_login import login_required, current_user
 
 from app.extensions import db
@@ -46,6 +46,8 @@ def receive(invoice_id):
         return redirect(url_for("invoices.detail", invoice_id=invoice_id))
 
     if request.method == "POST":
+        if inv.status not in ('sent', 'partial', 'overdue') or not inv.journal_entry_id:
+            abort(409, 'Only posted, outstanding invoices can receive payment.')
         amount = cents(request.form.get("amount"))
         bank_account_id = int(request.form["bank_account_id"])
         pay_date = date.fromisoformat(request.form["date"])
@@ -60,6 +62,12 @@ def receive(invoice_id):
             return redirect(url_for("payments.receive", invoice_id=invoice_id))
 
         bank = BankAccount.query.get_or_404(bank_account_id)
+        from app.controls import require_base_currency
+        require_base_currency(inv.currency_code)
+        if not bank.active or bank.currency_code != inv.currency_code or pay_date < inv.issue_date:
+            abort(409, 'Use an active bank in the invoice currency and a date on/after issue.')
+        if reference and Payment.query.join(PaymentAllocation).filter(PaymentAllocation.invoice_id == inv.id, Payment.reference == reference, Payment.bank_account_id == bank.id).first():
+            abort(409, 'This receipt reference is already allocated to this invoice.')
         ar_account = get_system_account("1100")
 
         payment = Payment(direction="in", contact_id=inv.contact_id, date=pay_date,
@@ -82,6 +90,7 @@ def receive(invoice_id):
                 created_by_id=current_user.id,
             )
         except LedgerError as e:
+            db.session.rollback()
             flash(f"Could not post payment: {e}", "error")
             return redirect(url_for("payments.receive", invoice_id=invoice_id))
 
@@ -105,6 +114,8 @@ def pay(bill_id):
         return redirect(url_for("bills.detail", bill_id=bill_id))
 
     if request.method == "POST":
+        if bill.status not in ('approved', 'partial') or not bill.journal_entry_id:
+            abort(409, 'Only approved, outstanding bills can be paid.')
         amount = cents(request.form.get("amount"))
         bank_account_id = int(request.form["bank_account_id"])
         pay_date = date.fromisoformat(request.form["date"])
@@ -119,6 +130,12 @@ def pay(bill_id):
             return redirect(url_for("payments.pay", bill_id=bill_id))
 
         bank = BankAccount.query.get_or_404(bank_account_id)
+        from app.controls import require_base_currency
+        require_base_currency(bill.currency_code)
+        if not bank.active or bank.currency_code != bill.currency_code or pay_date < bill.bill_date:
+            abort(409, 'Use an active bank in the bill currency and a date on/after the bill.')
+        if reference and Payment.query.join(PaymentAllocation).filter(PaymentAllocation.bill_id == bill.id, Payment.reference == reference, Payment.bank_account_id == bank.id).first():
+            abort(409, 'This payment reference is already allocated to this bill.')
         ap_account = get_system_account("2000")
 
         payment = Payment(direction="out", contact_id=bill.contact_id, date=pay_date,
@@ -141,6 +158,7 @@ def pay(bill_id):
                 created_by_id=current_user.id,
             )
         except LedgerError as e:
+            db.session.rollback()
             flash(f"Could not post payment: {e}", "error")
             return redirect(url_for("payments.pay", bill_id=bill_id))
 

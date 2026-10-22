@@ -5,6 +5,12 @@ any format. Amount cells arrive as float dollars; label cells as strings.
 """
 import csv
 import io
+from xml.sax.saxutils import escape
+
+def safe_cell(value):
+    if isinstance(value,str) and value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
+        return "'" + value
+    return value
 
 
 def _fmt_money(v):
@@ -14,14 +20,14 @@ def _fmt_money(v):
 def to_csv(report):
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow([report.title])
+    w.writerow([safe_cell(report.title)])
     for m in report.meta:
-        w.writerow([m])
+        w.writerow([safe_cell(m)])
     w.writerow([])
     if report.header:
         w.writerow(report.header)
     for _style, cells in report.rows:
-        w.writerow(["" if c is None else c for c in cells])
+        w.writerow(["" if c is None else safe_cell(c) for c in cells])
     return buf.getvalue().encode("utf-8")
 
 
@@ -34,10 +40,10 @@ def to_xlsx(report):
     ws.title = report.title[:31]
     bold = Font(bold=True)
 
-    ws.append([report.title])
+    ws.append([safe_cell(report.title)])
     ws["A1"].font = Font(bold=True, size=14)
     for m in report.meta:
-        ws.append([m])
+        ws.append([safe_cell(m)])
     ws.append([])
     if report.header:
         ws.append(report.header)
@@ -49,7 +55,7 @@ def to_xlsx(report):
         if not cells:
             ws.append([])
             continue
-        ws.append(["" if c is None else c for c in cells])
+        ws.append(["" if c is None else safe_cell(c) for c in cells])
         row_idx = ws.max_row
         for col_idx, val in enumerate(cells, start=1):
             cell = ws.cell(row=row_idx, column=col_idx)
@@ -78,9 +84,9 @@ def to_pdf(report):
     doc = SimpleDocTemplate(bio, pagesize=A4, topMargin=18 * mm, bottomMargin=18 * mm,
                             leftMargin=16 * mm, rightMargin=16 * mm, title=report.title)
     styles = getSampleStyleSheet()
-    story = [Paragraph(report.title, styles["Title"])]
+    story = [Paragraph(escape(report.title), styles["Title"])]
     for m in report.meta:
-        story.append(Paragraph(m, styles["Normal"]))
+        story.append(Paragraph(escape(m), styles["Normal"]))
     story.append(Spacer(1, 8 * mm))
 
     ncols = len(report.header) if report.header else 2

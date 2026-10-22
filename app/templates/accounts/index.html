@@ -16,7 +16,7 @@
           <td class="num">{{ balances[a.id] | money }}</td>
           <td>
             {% if current_user.can_edit() and not a.system_locked %}
-            <form class="inline" method="post" action="{{ url_for('accounts.toggle', account_id=a.id) }}">
+            <form class="inline" method="post" action="{{ url_for('accounts.toggle', account_id=a.id) }}">{% include '_form_tokens.html' %}
               <button class="btn btn-sm" type="submit">{{ "Deactivate" if a.active else "Activate" }}</button>
             </form>
             {% endif %}
@@ -29,7 +29,7 @@
   {% if current_user.can_edit() %}
   <div class="card">
     <h2>New account</h2>
-    <form method="post" action="{{ url_for('accounts.new') }}">
+    <form method="post" action="{{ url_for('accounts.new') }}">{% include '_form_tokens.html' %}
       <div class="field"><label>Code</label><input name="code" required placeholder="e.g. 6200"></div>
       <div class="field"><label>Name</label><input name="name" required></div>
       <div class="field">

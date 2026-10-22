@@ -21,12 +21,12 @@
 <div class="card">
   <h3>Revenue</h3>
   <table>
-    {% for a, amt in revenue_rows %}<tr><td>{{ a.code }} {{ a.name }}</td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
+    {% for a, amt in revenue_rows %}<tr><td><a href="{{ url_for('accounts.ledger',account_id=a.id,start=start if start is defined else None,end=end if end is defined else as_of,cost_center_id=cost_center_id if cost_center_id is defined else None) }}">{{ a.code }} {{ a.name }}</a></td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
     <tr class="grand" style="font-weight:700;border-top:1px solid var(--border);"><td>Total revenue</td><td class="num">{{ total_revenue | money }}</td></tr>
   </table>
   <h3 style="margin-top:20px;">Cost of Goods Sold</h3>
   <table>
-    {% for a, amt in cogs_rows %}<tr><td>{{ a.code }} {{ a.name }}</td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
+    {% for a, amt in cogs_rows %}<tr><td><a href="{{ url_for('accounts.ledger',account_id=a.id,start=start if start is defined else None,end=end if end is defined else as_of,cost_center_id=cost_center_id if cost_center_id is defined else None) }}">{{ a.code }} {{ a.name }}</a></td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
     <tr style="font-weight:700;border-top:1px solid var(--border);"><td>Total COGS</td><td class="num">{{ total_cogs | money }}</td></tr>
   </table>
   <table class="totals" style="margin-top:10px;">
@@ -34,7 +34,7 @@
   </table>
   <h3 style="margin-top:20px;">Operating Expenses</h3>
   <table>
-    {% for a, amt in opex_rows %}<tr><td>{{ a.code }} {{ a.name }}</td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
+    {% for a, amt in opex_rows %}<tr><td><a href="{{ url_for('accounts.ledger',account_id=a.id,start=start if start is defined else None,end=end if end is defined else as_of,cost_center_id=cost_center_id if cost_center_id is defined else None) }}">{{ a.code }} {{ a.name }}</a></td><td class="num">{{ amt | money }}</td></tr>{% endfor %}
     <tr style="font-weight:700;border-top:1px solid var(--border);"><td>Total operating expenses</td><td class="num">{{ total_opex | money }}</td></tr>
   </table>
   <table class="totals" style="margin-top:10px;">

@@ -9,7 +9,7 @@
 <div class="card">
   <h2>Import bank statement (CSV)</h2>
   <p class="hint">Expected columns: Date, Description, Amount (or Date, Description, Debit, Credit). Export this from your bank's online portal.</p>
-  <form method="post" action="{{ url_for('bank.import_csv', bank_id=bank.id) }}" enctype="multipart/form-data">
+  <form method="post" action="{{ url_for('bank.import_csv', bank_id=bank.id) }}" enctype="multipart/form-data">{% include '_form_tokens.html' %}
     <input type="file" name="file" accept=".csv" required>
     <button class="btn btn-primary" type="submit">Import</button>
   </form>

@@ -11,7 +11,7 @@
 <div class="grid grid-2">
   <div class="card">
     <h2>Company details</h2>
-    <form method="post">
+    <form method="post">{% include '_form_tokens.html' %}
       <div class="field"><label>Company name</label><input name="company_name" value="{{ settings.company_name }}" {{ 'disabled' if not current_user.is_admin() }}></div>
       <div class="field"><label>Legal address</label><textarea name="legal_address" rows="3" {{ 'disabled' if not current_user.is_admin() }}>{{ settings.legal_address }}</textarea></div>
       <div class="field"><label>Tax / Business Registration ID</label><input name="tax_id" value="{{ settings.tax_id }}" {{ 'disabled' if not current_user.is_admin() }}></div>
@@ -34,7 +34,7 @@
       <tbody>{% for c in currencies %}<tr><td>{{ c.code }}</td><td>{{ c.name }}</td><td>{{ c.symbol }}</td></tr>{% endfor %}</tbody>
     </table>
     {% if current_user.can_edit() %}
-    <form method="post" action="{{ url_for('settings.new_currency') }}" style="margin-top:14px;">
+    <form method="post" action="{{ url_for('settings.new_currency') }}" style="margin-top:14px;">{% include '_form_tokens.html' %}
       <div class="grid grid-3">
         <div class="field"><label>Code</label><input name="code" maxlength="3" placeholder="SGD"></div>
         <div class="field"><label>Name</label><input name="name" placeholder="Singapore Dollar"></div>

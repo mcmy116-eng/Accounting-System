@@ -22,7 +22,12 @@ from app.extensions import db
 _ADDITIVE_COLUMNS = {
     "documents": [
         ("claim_id", "INTEGER"),
+        ("journal_entry_id", "INTEGER"),
+        ("sha256", "VARCHAR(64)"),
+        ("drive_file_id", "VARCHAR(200)"),
     ],
+    "bank_transactions": [("source_key", "VARCHAR(128)")],
+    "synced_orders": [("source_snapshot", "TEXT")],
 }
 
 # Liability account the reimbursement workflow credits when a claim is approved.
@@ -55,12 +60,31 @@ def _ensure_reimbursement_account():
         db.session.commit()
 
 
-def ensure_schema(app):
+def _bootstrap_schema(app):
     with app.app_context():
         db.create_all()
         _ensure_columns()
+        from app.models import LedgerControl
+        if not db.session.get(LedgerControl, 1):
+            db.session.add(LedgerControl(id=1))
+            db.session.commit()
         # Only create the reimbursement account if the chart already exists
         # (i.e. the DB has been seeded); otherwise seed.py will add it.
         from app.models import Account
         if Account.query.first():
             _ensure_reimbursement_account()
+
+
+def ensure_schema(app):
+    # Gunicorn workers can start together. Serialize additive PostgreSQL DDL
+    # with a session advisory lock; use a separate connection for its lifetime.
+    with app.app_context():
+        if db.engine.dialect.name == 'postgresql':
+            with db.engine.connect() as conn:
+                conn.execute(text('SELECT pg_advisory_lock(87260422)'))
+                try:
+                    _bootstrap_schema(app)
+                finally:
+                    conn.execute(text('SELECT pg_advisory_unlock(87260422)'))
+        else:
+            _bootstrap_schema(app)

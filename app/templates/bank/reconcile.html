@@ -15,7 +15,7 @@
         <td class="num">{{ t.amount_cents | money }}</td>
         <td>
           {% if current_user.can_edit() %}
-          <form class="inline" method="post" action="{{ url_for('bank.match', bank_id=bank.id) }}">
+          <form class="inline" method="post" action="{{ url_for('bank.match', bank_id=bank.id) }}">{% include '_form_tokens.html' %}
             <input type="hidden" name="txn_id" value="{{ t.id }}">
             <select name="line_id" style="min-width:220px;">
               <option value="">— select entry —</option>
@@ -29,7 +29,7 @@
         </td>
         <td>
           {% if current_user.can_edit() %}
-          <form class="inline" method="post" action="{{ url_for('bank.quick_entry', bank_id=bank.id) }}">
+          <form class="inline" method="post" action="{{ url_for('bank.quick_entry', bank_id=bank.id) }}">{% include '_form_tokens.html' %}
             <input type="hidden" name="txn_id" value="{{ t.id }}">
             <select name="contra_account_id" required>
               <option value="">— category —</option>

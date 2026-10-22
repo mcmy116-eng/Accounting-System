@@ -2,6 +2,7 @@
 {% block title %}Sales Channels{% endblock %}
 {% block page_title %}Sales Channels{% endblock %}
 {% block content %}
+{% for review in reviews %}<div class="card"><h2>Sales change requires review #{{ review.id }}</h2><p>{{ review.external_id }}</p><pre style="white-space:pre-wrap">{{ review.detail }}</pre><p>Create a supported adjustment using reference SALES-REVIEW-{{ review.id }}; check the original sale, refund date, tax, fees and settlement before posting.</p><a href="{{ url_for('books.new') }}">Adjustment with evidence</a>{% if current_user.can_edit() %}<form method="post" action="{{ url_for('integrations.resolve',review_id=review.id) }}">{% include '_form_tokens.html' %}<input name="journal_entry_id" type="number" required placeholder="Adjustment journal ID"><input name="reason" required placeholder="Reconciliation conclusion"><button class="btn">Resolve with evidence</button></form>{% endif %}</div>{% endfor %}
 
 <div class="card">
   <p class="muted" style="margin:0;">
@@ -9,12 +10,12 @@
     booked as one balanced journal entry — sales revenue, shipping, tax and discounts split
     out, and the total posted to <strong>Payment Processor Clearing (1030)</strong>. Amounts in
     the store currency are converted to your base currency at the FX rate you set. Re-running a
-    date range is safe: orders already booked are skipped, never double-counted.
+    date range is safe: unchanged orders already booked are skipped; changed orders are held for evidence-based review.
   </p>
 </div>
 
 {% macro shopify_form(integ) %}
-<form method="post" action="{{ url_for('integrations.save_shopify') }}">
+<form method="post" action="{{ url_for('integrations.save_shopify') }}">{% include '_form_tokens.html' %}
   {% if integ %}<input type="hidden" name="id" value="{{ integ.id }}">{% endif %}
   <div class="grid grid-2">
     <div class="field"><label>Store label</label>
@@ -57,23 +58,23 @@
 
   {% if current_user.can_edit() %}
   <div class="grid grid-2" style="margin-top:8px;">
-    <form method="post" action="{{ url_for('integrations.run_sync', iid=integ.id) }}">
+    <form method="post" action="{{ url_for('integrations.run_sync', iid=integ.id) }}">{% include '_form_tokens.html' %}
       <h3>Import orders</h3>
       <div class="filters">
         <label>From <input type="date" name="start" value="{{ start }}"></label>
         <label>To <input type="date" name="end" value="{{ end }}"></label>
         <button class="btn btn-primary" type="submit">Sync now</button>
       </div>
-      <small class="muted">Books every order created in this range that isn't already in the ledger.</small>
+      <small class="muted">Checks orders updated in this range. Previously refunded or changed orders require review. Fees are estimates until reconciled to settlement evidence.</small>
     </form>
     <div>
       <h3>Connection</h3>
-      <form method="post" action="{{ url_for('integrations.test', iid=integ.id) }}" style="display:inline;">
+      <form method="post" action="{{ url_for('integrations.test', iid=integ.id) }}" style="display:inline;">{% include '_form_tokens.html' %}
         <button class="btn btn-sm" type="submit">Test connection</button>
       </form>
       {% if current_user.is_admin() %}
       <form method="post" action="{{ url_for('integrations.delete', iid=integ.id) }}" style="display:inline;"
-            onsubmit="return confirm('Remove this integration?');">
+            onsubmit="return confirm('Remove this integration?');">{% include '_form_tokens.html' %}
         <button class="btn btn-sm btn-danger" type="submit">Remove</button>
       </form>
       {% endif %}

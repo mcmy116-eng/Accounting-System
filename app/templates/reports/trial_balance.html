@@ -18,7 +18,7 @@
       {% for row in rows %}
       <tr>
         <td>{{ row.account.code }}</td>
-        <td>{{ row.account.name }}</td>
+        <td><a href="{{ url_for('accounts.ledger',account_id=row.account.id,end=as_of) }}">{{ row.account.name }}</a></td>
         <td class="num">{{ (row.debit | money) if row.debit else "" }}</td>
         <td class="num">{{ (row.credit | money) if row.credit else "" }}</td>
       </tr>

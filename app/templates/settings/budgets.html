@@ -30,7 +30,7 @@
   {% if current_user.can_edit() %}
   <div class="card">
     <h2>Add budget line</h2>
-    <form method="post">
+    <form method="post">{% include '_form_tokens.html' %}
       <div class="field"><label>Period</label><input type="month" name="period" required></div>
       <div class="field">
         <label>Account</label>

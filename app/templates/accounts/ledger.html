@@ -2,6 +2,7 @@
 {% block title %}{{ account.name }}{% endblock %}
 {% block page_title %}{{ account.code }} · {{ account.name }}{% endblock %}
 {% block content %}
+<p>Period: {{ start or 'All dates' }} to {{ end or 'Latest' }}{% if cost_center_id %} · Segment {{ cost_center_id }}{% endif %}. Running balance includes the opening balance before this range.</p>
 <div class="card">
   <table>
     <thead><tr><th>Date</th><th>Memo</th><th>Cost Center</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
@@ -9,7 +10,7 @@
       {% for row in rows %}
       <tr>
         <td>{{ row.line.entry.date }}</td>
-        <td>{{ row.line.description or row.line.entry.memo }}</td>
+        <td><a href="{{ url_for('books.detail',entry_id=row.line.journal_entry_id) }}">{{ row.line.description or row.line.entry.memo }}</a></td>
         <td class="muted">{{ row.line.cost_center.name if row.line.cost_center else "" }}</td>
         <td class="num">{{ (row.line.debit_cents | money) if row.line.debit_cents else "" }}</td>
         <td class="num">{{ (row.line.credit_cents | money) if row.line.credit_cents else "" }}</td>

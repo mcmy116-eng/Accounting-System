@@ -18,6 +18,15 @@ def index():
         settings.company_name = request.form.get("company_name", settings.company_name)
         settings.legal_address = request.form.get("legal_address", "")
         settings.tax_id = request.form.get("tax_id", "")
+        from app.models import JournalEntry
+        from flask import abort
+        target = request.form.get('base_currency', settings.base_currency)
+        if not db.session.get(Currency, target):
+            abort(400, 'Select a configured currency.')
+        if target != settings.base_currency and JournalEntry.query.first():
+            abort(409, 'Base currency cannot change after posting. A reviewed conversion/migration is required.')
+        if int(request.form.get('fiscal_year_start_month', 1)) not in range(1, 13):
+            abort(400, 'Fiscal year start month must be 1–12.')
         settings.base_currency = request.form.get("base_currency", settings.base_currency)
         settings.fiscal_year_start_month = int(request.form.get("fiscal_year_start_month", 1))
         settings.invoice_prefix = request.form.get("invoice_prefix", settings.invoice_prefix)
@@ -63,6 +72,10 @@ def new_tax_rate():
         return redirect(url_for("settings.tax_rates"))
     name = request.form.get("name", "").strip()
     rate = float(request.form.get("rate", 0))
+    import math
+    if not math.isfinite(rate) or not 0 <= rate <= 100:
+        from flask import abort
+        abort(400, 'Tax rate must be between 0 and 100 percent.')
     if not name:
         flash("Name is required.", "error")
         return redirect(url_for("settings.tax_rates"))

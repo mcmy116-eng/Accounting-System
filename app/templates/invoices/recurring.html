@@ -16,7 +16,7 @@
         <td>{{ r.next_run_date }}</td>
         <td>
           {% if current_user.can_edit() %}
-          <form class="inline" method="post" action="{{ url_for('invoices.recurring_run', rule_id=r.id) }}" onsubmit="return confirm('Generate a draft invoice now for this schedule?');">
+          <form class="inline" method="post" action="{{ url_for('invoices.recurring_run', rule_id=r.id) }}" onsubmit="return confirm('Generate a draft invoice now for this schedule?');">{% include '_form_tokens.html' %}
             <button class="btn btn-sm btn-primary" type="submit">Generate now</button>
           </form>
           {% endif %}
